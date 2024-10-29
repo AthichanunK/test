@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="stylesheet" href="styles.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yearly Financial Data</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* Styles for the modal */
+        #dataModal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding-top: 60px;
+        }
+        #modalContent {
+            background-color: #fefefe;
+            margin: 5% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+        }
+        .close:hover,
+        .close:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>Yearly Financial Data</h1>
+
+    <label for="searchYear">Search Year:</label>
+    <input type="number" id="searchYear" placeholder="Enter a year" min="1900" max="2100">
+    <button id="searchYearButton">Search</button>
+    <label for="startYear">Start Year:</label>
+    <input type="number" id="startYear" value="1990" min="1900" max="2100">
+    <button id="minYearButton">Min</button>
+    <button id="maxYearButton">Max</button>
+    <label for="endYear">End Year:</label>
+    <input type="number" id="endYear" value="2000" min="1900" max="2100">
+
+    <h2>Bar Chart - 1-Year US Treasury Bond vs 10-Year US Treasury Bond</h2>
+    <canvas id="barChart" width="800" height="400"></canvas>
+
+    <h2>Line Chart - S&P Composite Index, P/E, CPI</h2>
+    <canvas id="lineChart" width="800" height="400"></canvas>
+
+    <h2>Ranked Bar Chart</h2>
+    <label for="dataType">Choose Attribute:</label>
+    <select id="dataType">
+        <option value="R">R (1-Year Treasury)</option>
+        <option value="RLONG">RLONG (Long-term Treasury)</option>
+        <option value="CPI">CPI</option>
+        <option value="PE">S&P Composite P/E</option>
+    </select>
+    <label for="rankType">Rank By:</label>
+    <select id="rankType">
+        <option value="years">Rank by Years</option>
+        <option value="value">Rank by Value</option>
+    </select>
+    <canvas id="rankedBarChart" width="800" height="400"></canvas>
+
+    <!-- New comparison chart for Investment P/E vs. S&P 500 P/E -->
+    <h2>Comparison Line Chart - S&P Composite P/E vs S&P 500 P/E</h2>
+    <canvas id="comparisonChart" width="800" height="400"></canvas>
+
+    <!-- Modal for displaying detailed data -->
+    <div id="dataModal">
+        <div id="modalContent">
+            <span class="close">&times;</span>
+            <h2>Data for Year: <span id="modalYear"></span></h2>
+            <div id="modalData"></div>
+        </div>
+    </div>
+
+    <script>
+        const startYearInput = document.getElementById('startYear');
+        const endYearInput = document.getElementById('endYear');
+        const minYearButton = document.getElementById('minYearButton');
+        const maxYearButton = document.getElementById('maxYearButton');
+        const dataTypeSelect = document.getElementById('dataType');
+        const rankTypeSelect = document.getElementById('rankType');
+        const searchYearInput = document.getElementById('searchYear');
+        const searchYearButton = document.getElementById('searchYearButton');
+
+        const modal = document.getElementById("dataModal");
+        const span = document.getElementsByClassName("close")[0];
+        const modalYear = document.getElementById("modalYear");
+        const modalData = document.getElementById("modalData");
+
+        let minYear = 1889; 
+        let maxYear = 2009; 
+        
+        function searchYearData() {
+    const year = searchYearInput.value;
+    
+    if (year < 1889 || year > 2009) {
+        alert("Please enter a year between 1889 and 2009.");
+        return;
+    }
+
+    fetch(`data.php?year=${year}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                console.error(data.error);
+                alert("No data found for this year.");
+                return;
+            }
+
+            modalYear.textContent = year;
+            modalData.innerHTML = `
+                <p>Short Term US Tresauary:${data.r_values[0]}</p>
+                <p>Long Term US Tresauary: ${data.rlong_values[0]}</p>
+                <p>CPI: ${data.cpi_values[0]}</p>
+                <p>S&P Composite Index: ${data.p_values[0]}</p>
+                <p>S&P Composite P/E: ${data.pe_values[0]}</p>
+                <p>S&P 500 P/E: ${data.pe_snp500_values[0]}</p>
+            `;
+            modal.style.display = "block";
+        })
+        .catch(error => {
+            console.error("Error fetching data:", error);
+            alert("Failed to fetch data for the specified year.");
+        });
+}
+
+searchYearButton.addEventListener("click", searchYearData);
+        function fetchData() {
+            const startYear = startYearInput.value;
+            const endYear = endYearInput.value;
+
+            fetch(`data.php?startYear=${startYear}&endYear=${endYear}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        console.error(data.error);
+                        return;
+                    }
+
+                    
+                    Chart.getChart('barChart')?.destroy();
+                    Chart.getChart('lineChart')?.destroy();
+                    Chart.getChart('rankedBarChart')?.destroy();
+                    Chart.getChart('comparisonChart')?.destroy(); 
+
+                    const barChart = new Chart(document.getElementById('barChart').getContext('2d'), {
+                        type: 'bar',
+                        data: {
+                            labels: data.years,
+                            datasets: [
+                                {
+                                    label: 'R (1-Year Treasury)',
+                                    data: data.r_values,
+                                    backgroundColor: 'rgba(128, 0, 128, 0.5)',
+                                    borderColor: 'purple',
+                                    borderWidth: 1
+                                },
+                                {
+                                    label: 'RLONG (Long-term Treasury)',
+                                    data: data.rlong_values,
+                                    backgroundColor: 'rgba(255, 165, 0, 0.5)',
+                                    borderColor: 'orange',
+                                    borderWidth: 1
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            scales: {
+                                x: {
+                                    title: { display: true, text: 'Year' }
+                                },
+                                y: {
+                                    title: { display: true, text: 'Value' },
+                                    beginAtZero: true
+                                }
+                            },
+                            onClick: function(event) {
+                                const activePoints = this.getElementsAtEventForMode(event, 'nearest', { intersect: true }, false);
+                                if (activePoints.length) {
+                                    const index = activePoints[0].index;
+                                    const year = this.data.labels[index];
+
+                                    modalYear.textContent = year;
+                                    modalData.innerHTML = `
+                                        <p>R: ${data.r_values[index]}</p>
+                                        <p>RLONG: ${data.rlong_values[index]}</p>
+                                        <p>P: ${data.p_values[index]}</p>
+                                        <p>P/E: ${data.pe_values[index]}</p>
+                                        <p>CPI: ${data.cpi_values[index]}</p>
+                                    `;
+                                    modal.style.display = "block";
+                                }
+                            }
+                        }
+                    });
+
+                    
+                    const lineChart = new Chart(document.getElementById('lineChart').getContext('2d'), {
+                        type: 'line',
+                        data: {
+                            labels: data.years,
+                            datasets: [
+                                { label: 'S&P Composite Index', data: data.p_values, borderColor: '#C81D25', fill: false },
+                                { label: 'P/E', data: data.pe_values, borderColor: '#343434', fill: false },
+                                { label: 'CPI', data: data.cpi_values, borderColor: '#0033A0', fill: false }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            scales: {
+                                x: { title: { display: true, text: 'Year' } },
+                                y: { title: { display: true, text: 'Value' }, beginAtZero: true }
+                            },
+                            onClick: function(event) {
+                                const activePoints = this.getElementsAtEventForMode(event, 'nearest', { intersect: true }, false);
+                                if (activePoints.length) {
+                                    const index = activePoints[0].index;
+                                    const year = this.data.labels[index];
+
+                                    modalYear.textContent = year;
+                                    modalData.innerHTML = `
+                                        <p>R: ${data.r_values[index]}</p>
+                                        <p>RLONG: ${data.rlong_values[index]}</p>
+                                        <p>P: ${data.p_values[index]}</p>
+                                        <p>P/E: ${data.pe_values[index]}</p>
+                                        <p>CPI: ${data.cpi_values[index]}</p>
+                                    `;
+                                    modal.style.display = "block";
+                                }
+                            }
+                        }
+                    });
+
+                    // Ranked Bar Chart for Selected Attribute
+                    const selectedType = dataTypeSelect.value;
+                    const rankType = rankTypeSelect.value;
+
+                    let rankedData = [];
+                    if (selectedType === 'R') rankedData = data.r_values.map((value, index) => ({ year: data.years[index], value }));
+                    else if (selectedType === 'RLONG') rankedData = data.rlong_values.map((value, index) => ({ year: data.years[index], value }));
+                    else if (selectedType === 'CPI') rankedData = data.cpi_values.map((value, index) => ({ year: data.years[index], value }));
+                    else if (selectedType === 'PE') rankedData = data.pe_values.map((value, index) => ({ year: data.years[index], value }));
+
+                    rankedData.sort((a, b) => rankType === 'years' ? a.year - b.year : b.value - a.value);
+                    const rankedYears = rankedData.map(d => d.year);
+                    const rankedValues = rankedData.map(d => d.value);
+
+                    const rankedBarChart = new Chart(document.getElementById('rankedBarChart').getContext('2d'), {
+                        type: 'bar',
+                        data: {
+                            labels: rankedYears,
+                            datasets: [{
+                                label: selectedType,
+                                data: rankedValues,
+                                backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                                borderColor: 'rgba(54, 162, 235, 1)',
+                                borderWidth: 1
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            scales: {
+                                x: { title: { display: true, text: 'Year' } },
+                                y: { title: { display: true, text: 'Value' }, beginAtZero: true }
+                            }
+                        }
+                    });
+
+                    // Comparison Chart for P/E Investment vs. S&P 500 P/E
+                    const comparisonChart = new Chart(document.getElementById('comparisonChart').getContext('2d'), {
+                        type: 'line',
+                        data: {
+                            labels: data.years,
+                            datasets: [
+                                { label: 'S&P Composite 1500 P/E', data: data.pe_values, borderColor: '#343434', fill: false, borderWidth: 2 },
+                                { label: 'S&P 500 P/E', data: data.pe_snp500_values, borderColor: '#C81D25', fill: false, borderWidth: 2 }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            scales: {
+                                x: { title: { display: true, text: 'Year' } },
+                                y: { title: { display: true, text: 'P/E Ratio' }, beginAtZero: true }
+                            },
+                            plugins: {
+                                legend: { display: true, position: 'top' }
+                            }
+                        }
+                    });
+                });
+        }
+
+        minYearButton.addEventListener("click", () => { startYearInput.value = minYear; fetchData(); });
+        maxYearButton.addEventListener("click", () => { endYearInput.value = maxYear; fetchData(); });
+        startYearInput.addEventListener("change", fetchData);
+        endYearInput.addEventListener("change", fetchData);
+        dataTypeSelect.addEventListener("change", fetchData);
+        rankTypeSelect.addEventListener("change", fetchData);
+
+        span.onclick = function() { modal.style.display = "none"; }
+        window.onclick = function(event) { if (event.target == modal) modal.style.display = "none"; }
+
+        // Initial fetch to load default chart data
+        fetchData();
+    </script>
+</body>
+</html>
